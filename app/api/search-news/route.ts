@@ -3,6 +3,7 @@ import axios from 'axios';
 // Free news APIs
 const NEWS_API_KEY = process.env.NEWS_API_KEY || 'demo'; // Fallback for testing
 const GUARDIAN_API_KEY = process.env.GUARDIAN_API_KEY || 'demo';
+const NEWSDATA_API_KEY = process.env.NEWSDATA_API_KEY || 'demo';
 
 export async function POST(req: Request) {
   try {
@@ -15,7 +16,8 @@ export async function POST(req: Request) {
     // Search news from multiple sources
     const newsResults = await Promise.allSettled([
       searchNewsAPI(searchQueries),
-      searchGuardianAPI(searchQueries)
+      searchGuardianAPI(searchQueries),
+      searchNewsDataAPI(searchQueries)
     ]);
 
     // Combine and deduplicate results
@@ -35,7 +37,7 @@ export async function POST(req: Request) {
     return Response.json({ 
       articles: relevantArticles,
       total: relevantArticles.length,
-      sources: ['NewsAPI', 'Guardian']
+      sources: ['NewsAPI', 'Guardian', 'NewsData']
     });
 
   } catch (error: any) {
@@ -420,4 +422,68 @@ function filterForAndriani(articles: any[], filters: any) {
     const text = `${article.title} ${article.description}`.toLowerCase();
     return andrianiKeywords.some(keyword => text.includes(keyword));
   }).slice(0, 20); // Limit to 20 articles
+}
+
+async function searchNewsDataAPI(queries: string[]) {
+  try {
+    if (NEWSDATA_API_KEY === 'demo') {
+      // Sample data for NewsData
+      const newsDataArticles = [];
+      
+      queries.forEach((query, index) => {
+        const queryLower = query.toLowerCase();
+        
+        if (queryLower.includes('food') || queryLower.includes('packaging')) {
+          newsDataArticles.push({
+            title: "Global food industry adapts to new sustainability standards",
+            source: "NewsData.io",
+            url: `https://example.com/newsdata-food-${index}`,
+            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+            description: "International food companies implement new environmental regulations and innovation strategies"
+          });
+        }
+        
+        if (queryLower.includes('italy') || queryLower.includes('italian')) {
+          newsDataArticles.push({
+            title: "Italian food sector leads European sustainability initiatives",
+            source: "NewsData.io",
+            url: `https://example.com/newsdata-italy-${index}`,
+            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+            description: "Italian food companies announce new environmental commitments and market expansion"
+          });
+        }
+      });
+      
+      return newsDataArticles.slice(0, 3);
+    }
+
+    const results = [];
+    for (const query of queries.slice(0, 2)) { // Limit to 2 queries
+      const response = await axios.get('https://newsdata.io/api/1/news', {
+        params: {
+          apikey: NEWSDATA_API_KEY,
+          q: query,
+          language: 'en,it',
+          country: 'it,us,gb,ca',
+          category: 'business,technology',
+          size: 10
+        }
+      });
+      
+      if (response.data.results) {
+        results.push(...response.data.results.map(article => ({
+          title: article.title,
+          source: article.source_name || 'NewsData.io',
+          url: article.link,
+          publishedAt: article.pubDate,
+          description: article.description || ''
+        })));
+      }
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('NewsData API error:', error.message);
+    return [];
+  }
 }

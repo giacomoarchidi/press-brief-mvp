@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 
-const client = new OpenAI({ 
+const client = process.env.OPENAI_API_KEY ? new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY 
-});
+}) : null;
 
 export async function POST(req: Request) {
   try {
@@ -97,6 +97,34 @@ CRITICAL: You MUST analyze and return executive summaries for ALL ${filteredItem
 
 Output strict JSON with key "items" containing exactly ${filteredItems.length} items (one for each input article).
 `;
+
+    // Check if OpenAI is available
+    if (!client) {
+      // Fallback: return basic summaries without AI
+      const fallbackItems = filteredItems.map((item: any, index: number) => ({
+        title: `Executive Summary: ${item.title}`,
+        source: item.source || 'Unknown',
+        link: item.link || item.url || '#',
+        date: item.date || item.publishedAt || new Date().toISOString(),
+        category: 'general',
+        summary: `Strategic analysis of: ${item.title}. This news item requires AI analysis for detailed insights.`,
+        keyPoints: [
+          'AI analysis required for detailed insights',
+          'News item identified for board review',
+          'Further analysis needed for strategic implications'
+        ],
+        strategicImplications: 'This news item has been identified for board review and requires AI-powered analysis for strategic insights.',
+        riskLevel: 'medium',
+        actionItems: ['Schedule AI analysis', 'Review with management team']
+      }));
+
+      return Response.json({ 
+        items: fallbackItems,
+        total: fallbackItems.length,
+        aiEnabled: false,
+        message: 'AI analysis temporarily unavailable. Basic summaries provided.'
+      });
+    }
 
     // Use OpenAI GPT-3.5-turbo (excellent quality/price ratio)
     const response = await client.chat.completions.create({
