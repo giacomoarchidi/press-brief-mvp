@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 
-const client = process.env.OPENAI_API_KEY ? new OpenAI({ 
+const client = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY 
-}) : null;
+});
 
 export async function POST(req: Request) {
   try {
@@ -59,6 +59,12 @@ export async function POST(req: Request) {
     const instructions = `
 You are a senior strategic analyst creating executive briefings for Andriani's board of directors. Andriani is an Italian food company specializing in pasta, rice, and sustainable packaging.
 
+CRITICAL INSTRUCTIONS:
+- Create INTELLIGENT, PRECISE executive summaries that extract the CORE business implications
+- Focus on STRATEGIC DECISION-MAKING insights, not generic summaries
+- Provide ACTIONABLE intelligence for board-level decisions
+- Connect each news item DIRECTLY to Andriani's competitive position and strategic priorities
+
 EXECUTIVE BRIEFING FORMAT:
 - Focus on strategic implications, not just news summaries
 - Provide actionable insights for board-level decision making
@@ -66,12 +72,12 @@ EXECUTIVE BRIEFING FORMAT:
 - Connect news to Andriani's business strategy and market position
 
 REQUIRED FIELDS for each item:
-- title: Concise executive summary title
+- title: Concise executive summary title (max 60 characters)
 - source: News source
 - link: Original article URL
 - theme: Strategic theme (Agri & Commodity; Policy & Trade; ESG/Energy/Packaging; Competitors/Finance/Governance; Geopolitics & Risks; Tech/Data/Automation; Food Safety/Public Health; Territory/Brand Italy; Communication/Attention Economy)
-- priority: High/Medium/Low based on strategic impact
-- why_it_matters: 2-line strategic analysis focusing on business implications for Andriani
+- priority: High/Medium/Low based on strategic impact for Andriani
+- why_it_matters: 2-line PRECISE strategic analysis focusing on SPECIFIC business implications for Andriani
 - region: Italy, EU, USA, Canada
 - category: packaging, supply-chain, regulations, competitors, innovation, sustainability
 
@@ -98,34 +104,6 @@ CRITICAL: You MUST analyze and return executive summaries for ALL ${filteredItem
 Output strict JSON with key "items" containing exactly ${filteredItems.length} items (one for each input article).
 `;
 
-    // Check if OpenAI is available
-    if (!client) {
-      // Fallback: return basic summaries without AI
-      const fallbackItems = filteredItems.map((item: any, index: number) => ({
-        title: `Executive Summary: ${item.title}`,
-        source: item.source || 'Unknown',
-        link: item.link || item.url || '#',
-        date: item.date || item.publishedAt || new Date().toISOString(),
-        category: 'general',
-        summary: `Strategic analysis of: ${item.title}. This news item requires AI analysis for detailed insights.`,
-        keyPoints: [
-          'AI analysis required for detailed insights',
-          'News item identified for board review',
-          'Further analysis needed for strategic implications'
-        ],
-        strategicImplications: 'This news item has been identified for board review and requires AI-powered analysis for strategic insights.',
-        riskLevel: 'medium',
-        actionItems: ['Schedule AI analysis', 'Review with management team']
-      }));
-
-      return Response.json({ 
-        items: fallbackItems,
-        total: fallbackItems.length,
-        aiEnabled: false,
-        message: 'AI analysis temporarily unavailable. Basic summaries provided.'
-      });
-    }
-
     // Use OpenAI GPT-3.5-turbo (excellent quality/price ratio)
     const response = await client.chat.completions.create({
       model: "gpt-3.5-turbo",
@@ -137,7 +115,7 @@ Output strict JSON with key "items" containing exactly ${filteredItems.length} i
         }
       ],
       temperature: 0.3,
-      max_tokens: 6000, // Increased tokens to handle all articles
+      max_tokens: 4096, // Maximum tokens for GPT-3.5-turbo
     });
 
     const text = response.choices[0]?.message?.content ?? "";

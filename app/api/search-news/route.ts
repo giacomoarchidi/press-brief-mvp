@@ -34,10 +34,24 @@ export async function POST(req: Request) {
     // Filter for Andriani relevance
     const relevantArticles = filterForAndriani(uniqueArticles, filters);
 
+    // Se non ci sono articoli, restituisci un messaggio di errore
+    if (relevantArticles.length === 0) {
+      return Response.json({ 
+        error: 'Nessuna notizia trovata. Configura le chiavi API per ottenere notizie reali.',
+        articles: [],
+        total: 0,
+        sources: [],
+        message: 'Per ottenere notizie reali, configura le seguenti chiavi API nel file .env.local: NEWS_API_KEY, GUARDIAN_API_KEY, NEWSDATA_API_KEY'
+      });
+    }
+
     return Response.json({ 
       articles: relevantArticles,
       total: relevantArticles.length,
-      sources: ['NewsAPI', 'Guardian', 'NewsData']
+      sources: ['NewsAPI', 'Guardian', 'NewsData'].filter(source => {
+        // Mostra solo le fonti che hanno effettivamente restituito articoli
+        return newsResults.some(result => result.status === 'fulfilled' && result.value && result.value.length > 0);
+      })
     });
 
   } catch (error: any) {
@@ -53,82 +67,108 @@ export async function POST(req: Request) {
 function buildSearchQueries(filters: any) {
   const queries = [];
   
-  // Base queries for Andriani
-  const baseTerms = [
-    'pasta', 'rice', 'packaging', 'sustainable packaging',
-    'food industry', 'supply chain', 'agri-food', 'food regulations'
-  ];
-
-  // Add specific terms for categories
-  if (filters.categories?.includes('packaging')) {
-    queries.push('sustainable packaging EU regulations 2024');
-    queries.push('biodegradable packaging food industry innovation');
-    queries.push('circular economy packaging solutions');
-  }
-  
-  if (filters.categories?.includes('supply-chain')) {
-    queries.push('food supply chain disruption 2024');
-    queries.push('logistics food industry digital transformation');
-    queries.push('supply chain resilience food sector');
-  }
-  
-  if (filters.categories?.includes('regulations')) {
-    queries.push('EU food regulations 2024 compliance');
-    queries.push('food safety regulations new requirements');
-    queries.push('sustainability regulations food industry');
-  }
-  
-  if (filters.categories?.includes('competitors')) {
-    queries.push('Barilla De Cecco Garofalo pasta market share');
-    queries.push('pasta industry competition analysis 2024');
-    queries.push('Italian pasta brands international expansion');
-  }
-  
-  if (filters.categories?.includes('innovation')) {
-    queries.push('food technology innovation 2024');
-    queries.push('agri-food tech startups investment');
-    queries.push('artificial intelligence food industry');
-  }
-  
-  if (filters.categories?.includes('sustainability')) {
-    queries.push('sustainable food production ESG');
-    queries.push('carbon footprint food industry reduction');
-    queries.push('renewable energy food manufacturing');
+  // Se non ci sono filtri, usa query generiche più specifiche
+  if (!filters || (!filters.categories?.length && !filters.regions?.length && !filters.searchTerm)) {
+    return [
+      'food industry', 'agriculture news', 'sustainable packaging', 
+      'food manufacturing', 'agri-food business'
+    ];
   }
 
-  // Add geographic terms
-  if (filters.regions?.includes('italy')) {
-    queries.push('Italy food industry 2024 trends');
-    queries.push('Italian pasta rice export market');
-    queries.push('Made in Italy food sustainability');
+  // Crea query specifiche basate sui filtri selezionati
+  const categoryQueries: string[] = [];
+  const regionQueries: string[] = [];
+  
+  // Query per categorie selezionate
+  if (filters.categories?.length) {
+    filters.categories.forEach((category: string) => {
+      switch (category) {
+        case 'packaging':
+          categoryQueries.push('sustainable packaging regulations 2024');
+          categoryQueries.push('biodegradable packaging food industry');
+          categoryQueries.push('circular economy packaging solutions');
+          break;
+        case 'supply-chain':
+          categoryQueries.push('food supply chain disruption 2024');
+          categoryQueries.push('logistics food industry digital transformation');
+          categoryQueries.push('supply chain resilience food sector');
+          break;
+        case 'regulations':
+          categoryQueries.push('food regulations 2024 compliance');
+          categoryQueries.push('food safety regulations new requirements');
+          categoryQueries.push('sustainability regulations food industry');
+          break;
+        case 'competitors':
+          categoryQueries.push('Barilla De Cecco Garofalo pasta market');
+          categoryQueries.push('pasta industry competition analysis 2024');
+          categoryQueries.push('Italian pasta brands international expansion');
+          break;
+        case 'innovation':
+          categoryQueries.push('food technology innovation 2024');
+          categoryQueries.push('agri-food tech startups investment');
+          categoryQueries.push('artificial intelligence food industry');
+          break;
+        case 'sustainability':
+          categoryQueries.push('sustainable food production ESG');
+          categoryQueries.push('carbon footprint food industry reduction');
+          categoryQueries.push('renewable energy food manufacturing');
+          break;
+      }
+    });
   }
   
-  if (filters.regions?.includes('eu')) {
-    queries.push('EU food regulations 2024 updates');
-    queries.push('European food market digital transformation');
-    queries.push('EU Green Deal food industry impact');
+  // Query per regioni selezionate
+  if (filters.regions?.length) {
+    filters.regions.forEach((region: string) => {
+      switch (region) {
+        case 'italy':
+          regionQueries.push('Italy food industry 2024');
+          regionQueries.push('Italian pasta rice export market');
+          regionQueries.push('Made in Italy food sustainability');
+          break;
+        case 'eu':
+          regionQueries.push('EU food regulations 2024');
+          regionQueries.push('European food market digital transformation');
+          regionQueries.push('EU Green Deal food industry impact');
+          break;
+        case 'usa':
+          regionQueries.push('US food industry innovation trends');
+          regionQueries.push('American pasta market growth 2024');
+          regionQueries.push('US food safety regulations updates');
+          break;
+        case 'canada':
+          regionQueries.push('Canada food market sustainability');
+          regionQueries.push('Canadian food industry innovation');
+          regionQueries.push('Canada food regulations 2024');
+          break;
+      }
+    });
   }
   
-  if (filters.regions?.includes('usa')) {
-    queries.push('US food industry innovation trends');
-    queries.push('American pasta market growth 2024');
-    queries.push('US food safety regulations updates');
-  }
-  
-  if (filters.regions?.includes('canada')) {
-    queries.push('Canada food market sustainability');
-    queries.push('Canadian food industry innovation');
-    queries.push('Canada food regulations 2024');
+  // Combina query di categorie e regioni
+  if (categoryQueries.length > 0 && regionQueries.length > 0) {
+    // Se ci sono sia categorie che regioni, combina le query
+    categoryQueries.forEach(catQuery => {
+      regionQueries.forEach(regQuery => {
+        queries.push(`${catQuery} ${regQuery}`);
+      });
+    });
+  } else if (categoryQueries.length > 0) {
+    // Solo categorie
+    queries.push(...categoryQueries);
+  } else if (regionQueries.length > 0) {
+    // Solo regioni
+    queries.push(...regionQueries);
   }
 
-  // Add custom search term
+  // Aggiungi termine di ricerca personalizzato
   if (filters.searchTerm) {
     queries.push(filters.searchTerm);
   }
 
-  // If no filters, use generic queries
+  // Se non ci sono query, usa termini generici
   if (queries.length === 0) {
-    queries.push(...baseTerms);
+    queries.push('pasta industry 2024', 'rice market 2024', 'sustainable packaging 2024');
   }
 
   return queries;
@@ -136,171 +176,26 @@ function buildSearchQueries(filters: any) {
 
 async function searchNewsAPI(queries: string[]) {
   try {
-    if (NEWS_API_KEY === 'demo') {
-      // Dynamic sample data based on search queries
-      const sampleArticles = [];
-      
-      // Generate different articles based on the search queries
-      queries.forEach((query, index) => {
-        const queryLower = query.toLowerCase();
-        
-        if (queryLower.includes('packaging') || queryLower.includes('sustainable')) {
-          const packagingTitles = [
-            "New EU sustainable packaging regulations take effect",
-            "Biodegradable packaging revolution hits food industry",
-            "Circular economy packaging solutions gain traction",
-            "Food companies invest in eco-friendly packaging alternatives",
-            "Sustainable packaging standards reshape European market"
-          ];
-          const packagingSources = ["European Food News", "Packaging World", "Food Navigator", "Sustainable Packaging News", "Food Industry Today"];
-          
-          sampleArticles.push({
-            title: packagingTitles[Math.floor(Math.random() * packagingTitles.length)],
-            source: packagingSources[Math.floor(Math.random() * packagingSources.length)],
-            url: `https://example.com/packaging-ue-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "New EU rules for sustainable packaging impact the Italian food industry"
-          });
-        }
-        
-        if (queryLower.includes('barilla') || queryLower.includes('pasta') || queryLower.includes('competitors')) {
-          const competitorTitles = [
-            "Barilla invests €50 million in recyclable packaging",
-            "De Cecco expands international market presence",
-            "Garofalo launches new organic pasta line",
-            "Italian pasta industry sees 15% growth in exports",
-            "Pasta market competition intensifies with new players"
-          ];
-          const competitorSources = ["Milano Finanza", "Il Sole 24 Ore", "Food Business", "Pasta Industry News", "Italian Food Journal"];
-          
-          sampleArticles.push({
-            title: competitorTitles[Math.floor(Math.random() * competitorTitles.length)],
-            source: competitorSources[Math.floor(Math.random() * competitorSources.length)],
-            url: `https://example.com/competitors-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "The pasta industry continues to evolve with new sustainability initiatives and market expansion"
-          });
-        }
-        
-        if (queryLower.includes('supply chain') || queryLower.includes('logistics')) {
-          const supplyChainTitles = [
-            "Global food supply chain faces new challenges",
-            "Digital transformation reshapes food logistics",
-            "Supply chain resilience becomes key priority",
-            "Food companies invest in supply chain technology",
-            "Logistics innovation drives food industry efficiency"
-          ];
-          const supplyChainSources = ["The Guardian", "Supply Chain World", "Logistics Today", "Food Logistics", "Supply Chain Management"];
-          
-          sampleArticles.push({
-            title: supplyChainTitles[Math.floor(Math.random() * supplyChainTitles.length)],
-            source: supplyChainSources[Math.floor(Math.random() * supplyChainSources.length)],
-            url: `https://example.com/supply-chain-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "International food supply chains adapt to new sustainability requirements and digital transformation"
-          });
-        }
-        
-        if (queryLower.includes('italy') || queryLower.includes('italian')) {
-          const italyTitles = [
-            "Italian food industry adapts to new sustainability standards",
-            "Made in Italy food exports reach record levels",
-            "Italian pasta companies lead sustainability initiatives",
-            "Food innovation hubs emerge across Italy",
-            "Italian food sector embraces digital transformation"
-          ];
-          const italySources = ["Corriere della Sera", "La Repubblica", "Il Sole 24 Ore", "Italian Food News", "Made in Italy Today"];
-          
-          sampleArticles.push({
-            title: italyTitles[Math.floor(Math.random() * italyTitles.length)],
-            source: italySources[Math.floor(Math.random() * italySources.length)],
-            url: `https://example.com/italy-food-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "Italian food companies implement new environmental regulations and innovation strategies"
-          });
-        }
-        
-        if (queryLower.includes('innovation') || queryLower.includes('technology')) {
-          const innovationTitles = [
-            "Food tech innovation drives sustainable packaging solutions",
-            "AI revolutionizes food production processes",
-            "Blockchain technology enhances food traceability",
-            "Robotics transform food manufacturing efficiency",
-            "IoT sensors optimize food supply chain monitoring"
-          ];
-          const innovationSources = ["Food Technology Magazine", "TechCrunch Food", "Innovation in Food", "Food Tech Weekly", "Agri-Food Tech News"];
-          
-          sampleArticles.push({
-            title: innovationTitles[Math.floor(Math.random() * innovationTitles.length)],
-            source: innovationSources[Math.floor(Math.random() * innovationSources.length)],
-            url: `https://example.com/food-tech-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "New technologies revolutionize food packaging, production, and sustainability across the industry"
-          });
-        }
-        
-        if (queryLower.includes('regulations') || queryLower.includes('compliance')) {
-          const regulationTitles = [
-            "New food safety regulations impact European manufacturers",
-            "EU updates food labeling requirements for 2024",
-            "Sustainability regulations reshape food industry compliance",
-            "Food traceability standards become mandatory",
-            "New allergen labeling rules affect food manufacturers"
-          ];
-          const regulationSources = ["Food Safety News", "EU Food Law", "Compliance Today", "Food Regulation Weekly", "European Food Safety Authority"];
-          
-          sampleArticles.push({
-            title: regulationTitles[Math.floor(Math.random() * regulationTitles.length)],
-            source: regulationSources[Math.floor(Math.random() * regulationSources.length)],
-            url: `https://example.com/regulations-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "Updated compliance requirements affect food industry operations and market strategies"
-          });
-        }
-      });
-      
-      // If no specific matches, return generic articles
-      if (sampleArticles.length === 0) {
-        sampleArticles.push(
-          {
-            title: "Food industry trends: sustainability and innovation",
-            source: "Food Industry Today",
-            url: "https://example.com/trends-1",
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "Latest trends in food industry sustainability and technological innovation"
-          },
-          {
-            title: "European food market adapts to changing consumer demands",
-            source: "European Food Journal",
-            url: "https://example.com/market-1",
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "Food companies respond to evolving consumer preferences and regulations"
-          }
-        );
-      }
-      
-      // Return unique articles (deduplicate by title)
-      const uniqueArticles = sampleArticles.filter((article, index, self) => 
-        index === self.findIndex(a => a.title === article.title)
-      );
-      
-      return uniqueArticles.slice(0, 5); // Limit to 5 articles
+    if (NEWS_API_KEY === 'demo' || !NEWS_API_KEY) {
+      console.log('NewsAPI: Chiave API non configurata, saltando...');
+      return [];
     }
 
     const results = [];
-    for (const query of queries.slice(0, 3)) { // Limit to 3 queries to avoid rate limiting
+    for (const query of queries.slice(0, 3)) { // Increased to 3 queries for better balance
       const response = await axios.get('https://newsapi.org/v2/everything', {
         params: {
           q: query,
-          language: 'it,en',
+          language: 'en',
           sortBy: 'publishedAt',
-          pageSize: 10,
+          // Removed 'from' parameter due to NewsAPI free tier date limitations
+          pageSize: 5,
           apiKey: NEWS_API_KEY
         }
       });
       
       if (response.data.articles) {
-        results.push(...response.data.articles.map(article => ({
+        results.push(...response.data.articles.map((article: any) => ({
           title: article.title,
           source: article.source.name,
           url: article.url,
@@ -312,78 +207,32 @@ async function searchNewsAPI(queries: string[]) {
     
     return results;
   } catch (error) {
-    console.error('NewsAPI error:', error.message);
+    console.error('NewsAPI error:', error instanceof Error ? error.message : error);
     return [];
   }
 }
 
 async function searchGuardianAPI(queries: string[]) {
   try {
-    if (GUARDIAN_API_KEY === 'demo') {
-      // Dynamic sample data for Guardian based on search queries
-      const guardianArticles = [];
-      
-      queries.forEach((query, index) => {
-        const queryLower = query.toLowerCase();
-        
-        if (queryLower.includes('supply chain') || queryLower.includes('logistics')) {
-          guardianArticles.push({
-            title: "Global food supply chain faces new challenges",
-            source: "The Guardian",
-            url: `https://example.com/guardian-supply-chain-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "International food supply chains adapt to new sustainability requirements"
-          });
-        }
-        
-        if (queryLower.includes('sustainability') || queryLower.includes('esg')) {
-          guardianArticles.push({
-            title: "Food industry sustainability initiatives gain momentum",
-            source: "The Guardian",
-            url: `https://example.com/guardian-sustainability-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "Major food companies announce new environmental commitments"
-          });
-        }
-        
-        if (queryLower.includes('regulations') || queryLower.includes('policy')) {
-          guardianArticles.push({
-            title: "New food regulations reshape European market",
-            source: "The Guardian",
-            url: `https://example.com/guardian-regulations-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "Updated food safety and sustainability regulations impact industry"
-          });
-        }
-      });
-      
-      // If no specific matches, return generic Guardian articles
-      if (guardianArticles.length === 0) {
-        guardianArticles.push({
-          title: "Food industry adapts to changing global landscape",
-          source: "The Guardian",
-          url: "https://example.com/guardian-generic",
-          publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-          description: "Food companies navigate new challenges and opportunities"
-        });
-      }
-      
-      return guardianArticles.slice(0, 3); // Limit to 3 articles
+    if (GUARDIAN_API_KEY === 'demo' || !GUARDIAN_API_KEY) {
+      console.log('Guardian API: Chiave API non configurata, saltando...');
+      return [];
     }
 
     const results = [];
-    for (const query of queries.slice(0, 2)) { // Limit to 2 queries
+    for (const query of queries.slice(0, 2)) { // Keep Guardian at 2 queries to balance
       const response = await axios.get('https://content.guardianapis.com/search', {
         params: {
           q: query,
           'api-key': GUARDIAN_API_KEY,
           'show-fields': 'headline,trailText,shortUrl',
-          'page-size': 10
+          // Removed 'from-date' to get more recent articles
+          'page-size': 5
         }
       });
       
       if (response.data.response?.results) {
-        results.push(...response.data.response.results.map(article => ({
+        results.push(...response.data.response.results.slice(0, 3).map((article: any) => ({
           title: article.webTitle,
           source: 'The Guardian',
           url: article.webUrl,
@@ -395,7 +244,42 @@ async function searchGuardianAPI(queries: string[]) {
     
     return results;
   } catch (error) {
-    console.error('Guardian API error:', error.message);
+    console.error('Guardian API error:', error instanceof Error ? error.message : error);
+    return [];
+  }
+}
+
+async function searchNewsDataAPI(queries: string[]) {
+  try {
+    if (NEWSDATA_API_KEY === 'demo' || !NEWSDATA_API_KEY) {
+      console.log('NewsData API: Chiave API non configurata, saltando...');
+      return [];
+    }
+
+    const results = [];
+    for (const query of queries.slice(0, 1)) { // Limit to 1 query to save quota
+      const response = await axios.get('https://newsdata.io/api/1/news', {
+        params: {
+          apikey: NEWSDATA_API_KEY,
+          q: query
+          // Removed page_size parameter as it causes 422 error
+        }
+      });
+      
+      if (response.data.results) {
+        results.push(...response.data.results.slice(0, 5).map((article: any) => ({
+          title: article.title,
+          source: article.source_name || 'NewsData',
+          url: article.link,
+          publishedAt: article.pubDate,
+          description: article.description || ''
+        })));
+      }
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('NewsData API error:', error instanceof Error ? error.message : error);
     return [];
   }
 }
@@ -411,79 +295,45 @@ function deduplicateArticles(articles: any[]) {
 }
 
 function filterForAndriani(articles: any[], filters: any) {
-  // Filter articles relevant to Andriani
-  const andrianiKeywords = [
-    'pasta', 'rice', 'packaging', 'sustainable', 'food', 'supply chain',
-    'regulations', 'EU', 'Italy', 'Barilla', 'De Cecco', 'Garofalo',
-    'agri-food', 'food industry', 'sustainability', 'ESG'
-  ];
+  // Filtra articoli rilevanti per Andriani basato sui filtri selezionati
+  let keywords = ['pasta', 'rice', 'food', 'agri-food', 'food industry'];
+  
+  // Aggiungi keyword specifiche basate sui filtri
+  if (filters.categories?.includes('packaging')) {
+    keywords.push('packaging', 'sustainable', 'biodegradable', 'circular economy');
+  }
+  if (filters.categories?.includes('supply-chain')) {
+    keywords.push('supply chain', 'logistics', 'distribution');
+  }
+  if (filters.categories?.includes('regulations')) {
+    keywords.push('regulations', 'compliance', 'safety', 'EU');
+  }
+  if (filters.categories?.includes('competitors')) {
+    keywords.push('Barilla', 'De Cecco', 'Garofalo', 'competition', 'market share');
+  }
+  if (filters.categories?.includes('innovation')) {
+    keywords.push('innovation', 'technology', 'digital', 'AI', 'startup');
+  }
+  if (filters.categories?.includes('sustainability')) {
+    keywords.push('sustainability', 'ESG', 'carbon', 'renewable', 'green');
+  }
+  
+  // Aggiungi keyword geografiche
+  if (filters.regions?.includes('italy')) {
+    keywords.push('Italy', 'Italian', 'Made in Italy');
+  }
+  if (filters.regions?.includes('eu')) {
+    keywords.push('EU', 'European', 'Europe');
+  }
+  if (filters.regions?.includes('usa')) {
+    keywords.push('US', 'America', 'American');
+  }
+  if (filters.regions?.includes('canada')) {
+    keywords.push('Canada', 'Canadian');
+  }
 
   return articles.filter(article => {
     const text = `${article.title} ${article.description}`.toLowerCase();
-    return andrianiKeywords.some(keyword => text.includes(keyword));
+    return keywords.some(keyword => text.includes(keyword.toLowerCase()));
   }).slice(0, 20); // Limit to 20 articles
-}
-
-async function searchNewsDataAPI(queries: string[]) {
-  try {
-    if (NEWSDATA_API_KEY === 'demo') {
-      // Sample data for NewsData
-      const newsDataArticles = [];
-      
-      queries.forEach((query, index) => {
-        const queryLower = query.toLowerCase();
-        
-        if (queryLower.includes('food') || queryLower.includes('packaging')) {
-          newsDataArticles.push({
-            title: "Global food industry adapts to new sustainability standards",
-            source: "NewsData.io",
-            url: `https://example.com/newsdata-food-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "International food companies implement new environmental regulations and innovation strategies"
-          });
-        }
-        
-        if (queryLower.includes('italy') || queryLower.includes('italian')) {
-          newsDataArticles.push({
-            title: "Italian food sector leads European sustainability initiatives",
-            source: "NewsData.io",
-            url: `https://example.com/newsdata-italy-${index}`,
-            publishedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-            description: "Italian food companies announce new environmental commitments and market expansion"
-          });
-        }
-      });
-      
-      return newsDataArticles.slice(0, 3);
-    }
-
-    const results = [];
-    for (const query of queries.slice(0, 2)) { // Limit to 2 queries
-      const response = await axios.get('https://newsdata.io/api/1/news', {
-        params: {
-          apikey: NEWSDATA_API_KEY,
-          q: query,
-          language: 'en,it',
-          country: 'it,us,gb,ca',
-          category: 'business,technology',
-          size: 10
-        }
-      });
-      
-      if (response.data.results) {
-        results.push(...response.data.results.map(article => ({
-          title: article.title,
-          source: article.source_name || 'NewsData.io',
-          url: article.link,
-          publishedAt: article.pubDate,
-          description: article.description || ''
-        })));
-      }
-    }
-    
-    return results;
-  } catch (error) {
-    console.error('NewsData API error:', error.message);
-    return [];
-  }
 }
